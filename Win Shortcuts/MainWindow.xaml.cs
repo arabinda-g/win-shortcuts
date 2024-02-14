@@ -92,27 +92,47 @@ namespace Win_Shortcuts
                 return;
             }
 
-            // Determine the current screen of the window
+            bool wasMaximized = NativeMethods.IsZoomed(hwnd);
+            if (wasMaximized)
+            {
+                // Restore the window if it was maximized
+                NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
+            }
+
             var currentScreen = Screen.FromHandle(hwnd);
             var allScreens = Screen.AllScreens;
             int currentIndex = Array.IndexOf(allScreens, currentScreen);
             int targetIndex = moveToNext ? (currentIndex + 1) % allScreens.Length : (currentIndex - 1 + allScreens.Length) % allScreens.Length;
             var targetScreen = allScreens[targetIndex];
 
-            // Calculate new window position (center of the target monitor)
-            int newX = targetScreen.WorkingArea.Left + (targetScreen.WorkingArea.Width - (windowRect.Right - windowRect.Left)) / 2;
-            int newY = targetScreen.WorkingArea.Top + (targetScreen.WorkingArea.Height - (windowRect.Bottom - windowRect.Top)) / 2;
+            // For normal windows, calculate new position to maintain relative position on the new monitor
+            int newX = targetScreen.Bounds.Left + (windowRect.Left - currentScreen.Bounds.Left);
+            int newY = targetScreen.Bounds.Top + (windowRect.Top - currentScreen.Bounds.Top);
+
+            // Adjust newX and newY if the window was maximized to center it on the new screen
+            if (wasMaximized)
+            {
+                newX = targetScreen.WorkingArea.Left + (targetScreen.WorkingArea.Width - (windowRect.Right - windowRect.Left)) / 2;
+                newY = targetScreen.WorkingArea.Top + (targetScreen.WorkingArea.Height - (windowRect.Bottom - windowRect.Top)) / 2;
+            }
 
             // Move the window
-            if (!NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, newX, newY, 0, 0, NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOSIZE))
+            if (!NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, newX, newY, 0, 0, NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_SHOWWINDOW))
             {
                 LogMessage("Failed to move window.", LogLevel.ERR);
             }
             else
             {
+                if (wasMaximized)
+                {
+                    // Maximize the window again if it was maximized originally
+                    NativeMethods.ShowWindow(hwnd, NativeMethods.SW_MAXIMIZE);
+                }
+                NativeMethods.SetForegroundWindow(hwnd);
                 LogMessage("Window moved to another monitor successfully.", LogLevel.INFO);
             }
         }
+
 
         protected override void OnClosed(EventArgs e)
         {
@@ -181,6 +201,17 @@ namespace Win_Shortcuts
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
+
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsZoomed(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
         public struct RECT
         {
             public int Left;
@@ -191,5 +222,8 @@ namespace Win_Shortcuts
 
         public const uint SWP_NOZORDER = 0x0004;
         public const uint SWP_NOSIZE = 0x0001;
+        public const uint SWP_SHOWWINDOW = 0x0040;
+        public const int SW_RESTORE = 9;
+        public const int SW_MAXIMIZE = 3;
     }
 }
