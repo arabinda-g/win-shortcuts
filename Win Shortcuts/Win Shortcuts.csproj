@@ -7,6 +7,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+
+	  <!-- This line enables Windows Forms -->
+	  <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
 </Project>
