@@ -1,7 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
-using System.IO; // To resolve ambiguity between System.Windows and System.Windows.Forms
+using System.Diagnostics; // To resolve ambiguity between System.Windows and System.Windows.Forms
 
 
 namespace Win_Shortcuts
@@ -11,6 +11,8 @@ namespace Win_Shortcuts
     /// </summary>
     public partial class MainWindow : Window
     {
+        // List of applications that require special handling when moving to another monitor
+        private readonly List<string> specialHandlingApps = ["Code"];
 
         public MainWindow()
         {
@@ -60,7 +62,22 @@ namespace Win_Shortcuts
             }
         }
 
-        private static void MoveWindowToMonitor(bool moveToNext)
+        private string GetProcessNameByWindowHandle(IntPtr hWnd)
+        {
+            NativeMethods.GetWindowThreadProcessId(hWnd, out uint processId);
+            try
+            {
+                Process process = Process.GetProcessById((int)processId);
+                return process.ProcessName;
+            }
+            catch (ArgumentException)
+            {
+                // The process might no longer be running.
+                return string.Empty;
+            }
+        }
+
+        private void MoveWindowToMonitor(bool moveToNext)
         {
             IntPtr hwnd = NativeMethods.GetForegroundWindow();
             if (hwnd == IntPtr.Zero)
@@ -78,7 +95,17 @@ namespace Win_Shortcuts
 
             // Check if the window is maximized
             bool isMaximized = NativeMethods.IsZoomed(hwnd);
-            if (isMaximized)
+            string processName = GetProcessNameByWindowHandle(hwnd);
+            bool requiresSpecialHandling = specialHandlingApps.Contains(processName);
+
+            // Restore the window if it's maximized or requires special handling
+            if (requiresSpecialHandling)
+            {
+                NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
+                // Small delay to ensure the window has time to restore
+                Thread.Sleep(100);
+            }
+            else if (isMaximized)
             {
                 // Restore the window before moving it to adjust its position
                 NativeMethods.ShowWindow(hwnd, NativeMethods.SW_MINIMIZE);
@@ -112,7 +139,7 @@ namespace Win_Shortcuts
                 placement.rcNormalPosition.Bottom = placement.rcNormalPosition.Top + windowRect.Bottom - windowRect.Top;
             }
 
-            // Apply the new placement
+            // Apply the new placement. This will set the window's position and size even if it was minimized
             NativeMethods.SetWindowPlacement(hwnd, ref placement);
 
             if (isMaximized)
@@ -120,6 +147,8 @@ namespace Win_Shortcuts
                 // Maximize the window again after it has been moved
                 NativeMethods.ShowWindow(hwnd, NativeMethods.SW_MAXIMIZE);
             }
+
+            // Bring the window to the front
             NativeMethods.SetForegroundWindow(hwnd);
 
             Logger.Log("Window moved to another monitor successfully.", Logger.Level.INFO);
