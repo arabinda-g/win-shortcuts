@@ -11,22 +11,6 @@ namespace Win_Shortcuts
     /// </summary>
     public partial class MainWindow : Window
     {
-        // Constants for hotkeys
-        private const int WH_KEYBOARD_LL = 13;
-        private const int WH_MOUSE_LL = 14;
-        private const int WM_HOTKEY = 0x0312;
-        private const int MOD_ALT = 0x0001;
-        private const int VK_RIGHT = 0x27;
-        private const int VK_LEFT = 0x25;
-
-
-        // P/Invoke declarations
-        [DllImport("user32.dll")]
-        private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
-
-        [DllImport("user32.dll")]
-        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
 
         public MainWindow()
         {
@@ -38,22 +22,22 @@ namespace Win_Shortcuts
         private void RegisterHotKeys()
         {
             var hWnd = new WindowInteropHelper(this).EnsureHandle();
-            if (!RegisterHotKey(hWnd, 1, MOD_ALT, VK_RIGHT))
+            if (!NativeMethods.RegisterHotKey(hWnd, 1, NativeMethods.MOD_ALT, NativeMethods.VK_RIGHT))
             {
-                LogMessage("Failed to register Alt+Right Arrow hotkey.", LogLevel.ERR);
+                Logger.Log("Failed to register Alt+Right Arrow hotkey.", Logger.Level.ERROR);
             }
             else
             {
-                LogMessage("Alt+Right Arrow hotkey registered successfully.", LogLevel.INFO);
+                Logger.Log("Alt+Right Arrow hotkey registered successfully.", Logger.Level.INFO);
             }
 
-            if (!RegisterHotKey(hWnd, 2, MOD_ALT, VK_LEFT))
+            if (!NativeMethods.RegisterHotKey(hWnd, 2, NativeMethods.MOD_ALT, NativeMethods.VK_LEFT))
             {
-                LogMessage("Failed to register Alt+Left Arrow hotkey.", LogLevel.ERR);
+                Logger.Log("Failed to register Alt+Left Arrow hotkey.", Logger.Level.ERROR);
             }
             else
             {
-                LogMessage("Alt+Left Arrow hotkey registered successfully.", LogLevel.INFO);
+                Logger.Log("Alt+Left Arrow hotkey registered successfully.", Logger.Level.INFO);
             }
 
             ComponentDispatcher.ThreadFilterMessage += ComponentDispatcher_ThreadFilterMessage;
@@ -61,34 +45,34 @@ namespace Win_Shortcuts
 
         private void ComponentDispatcher_ThreadFilterMessage(ref MSG msg, ref bool handled)
         {
-            if (msg.message == WM_HOTKEY)
+            if (msg.message == NativeMethods.WM_HOTKEY)
             {
                 if (msg.wParam.ToInt32() == 1)
                 {
-                    LogMessage("Alt+Right Arrow pressed.", LogLevel.DEBUG);
+                    Logger.Log("Alt+Right Arrow pressed.", Logger.Level.DEBUG);
                     MoveWindowToMonitor(true);
                 }
                 else if (msg.wParam.ToInt32() == 2)
                 {
-                    LogMessage("Alt+Left Arrow pressed.", LogLevel.DEBUG);
+                    Logger.Log("Alt+Left Arrow pressed.", Logger.Level.DEBUG);
                     MoveWindowToMonitor(false);
                 }
             }
         }
 
-        private void MoveWindowToMonitor(bool moveToNext)
+        private static void MoveWindowToMonitor(bool moveToNext)
         {
             IntPtr hwnd = NativeMethods.GetForegroundWindow();
             if (hwnd == IntPtr.Zero)
             {
-                LogMessage("No foreground window found.", LogLevel.ERR);
+                Logger.Log("No foreground window found.", Logger.Level.ERROR);
                 return;
             }
 
             NativeMethods.RECT windowRect;
             if (!NativeMethods.GetWindowRect(hwnd, out windowRect))
             {
-                LogMessage("Failed to get window rectangle.", LogLevel.ERR);
+                Logger.Log("Failed to get window rectangle.", Logger.Level.ERROR);
                 return;
             }
 
@@ -138,7 +122,7 @@ namespace Win_Shortcuts
             }
             NativeMethods.SetForegroundWindow(hwnd);
 
-            LogMessage("Window moved to another monitor successfully.", LogLevel.INFO);
+            Logger.Log("Window moved to another monitor successfully.", Logger.Level.INFO);
         }
 
         protected override void OnClosed(EventArgs e)
@@ -150,124 +134,10 @@ namespace Win_Shortcuts
         private void UnregisterHotKeys()
         {
             var hWnd = new WindowInteropHelper(this).Handle;
-            UnregisterHotKey(hWnd, 1);
-            UnregisterHotKey(hWnd, 2);
+            NativeMethods.UnregisterHotKey(hWnd, 1);
+            NativeMethods.UnregisterHotKey(hWnd, 2);
             ComponentDispatcher.ThreadFilterMessage -= ComponentDispatcher_ThreadFilterMessage;
-            LogMessage("Application exiting.", LogLevel.INFO);
-        }
-
-
-
-
-        // Enum for log levels
-        public enum LogLevel
-        {
-            DEBUG,
-            INFO,
-            WARNING,
-            ERR,
-            CRITICAL,
-            ALERT,
-            EMERGENCY,
-            NONE
-        }
-
-        // Flag for current logging level
-        private LogLevel LOG_LEVEL = LogLevel.NONE; // Set the log level here
-
-        // Function to log messages to a file
-        private void LogMessage(string message, LogLevel level = LogLevel.INFO)
-        {
-            // Path to the log file
-            string logFilePath = "log.txt";
-
-            // Get the current date and time
-            DateTime now = DateTime.Now;
-
-            // Convert log level enum to string
-            string levelStr = Enum.GetName(typeof(LogLevel), level);
-
-            // Write log message to file with timestamp and log level
-            using (StreamWriter logFile = new StreamWriter(logFilePath, true))
-            {
-                logFile.WriteLine($"[{now:yyyy-MM-ddTHH:mm:ss.fffK}] [{levelStr}] {message}");
-            }
-        }
-    }
-
-
-    class NativeMethods
-    {
-        [DllImport("user32.dll")]
-        public static extern IntPtr GetForegroundWindow();
-
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-
-
-        [DllImport("user32.dll")]
-        public static extern bool SetForegroundWindow(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool IsZoomed(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-        //public struct RECT
-        //{
-        //    public int Left;
-        //    public int Top;
-        //    public int Right;
-        //    public int Bottom;
-        //}
-
-        public const uint SWP_NOZORDER = 0x0004;
-        public const uint SWP_NOSIZE = 0x0001;
-        public const uint SWP_SHOWWINDOW = 0x0040;
-        public const int SW_RESTORE = 9;
-        public const int SW_MAXIMIZE = 3;
-        public const int SW_MINIMIZE = 6;
-
-
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool SetWindowPlacement(IntPtr hWnd, [In] ref WINDOWPLACEMENT lpwndpl);
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct WINDOWPLACEMENT
-        {
-            public int length;
-            public int flags;
-            public int showCmd;
-            public POINT ptMinPosition;
-            public POINT ptMaxPosition;
-            public RECT rcNormalPosition;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct POINT
-        {
-            public int X;
-            public int Y;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct RECT
-        {
-            public int Left;
-            public int Top;
-            public int Right;
-            public int Bottom;
+            Logger.Log("Application exiting.", Logger.Level.INFO);
         }
     }
 }
