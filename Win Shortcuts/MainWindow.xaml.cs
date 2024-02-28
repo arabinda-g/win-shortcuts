@@ -18,7 +18,11 @@ namespace Win_Shortcuts
         {
             InitializeComponent();
 
-            RegisterHotKeys();
+            //RegisterHotKeys();
+
+            // Set up the mouse hook
+            MouseHook.SetHook();
+
         }
 
         private void RegisterHotKeys()
@@ -157,7 +161,10 @@ namespace Win_Shortcuts
         protected override void OnClosed(EventArgs e)
         {
             base.OnClosed(e);
-            UnregisterHotKeys();
+            //UnregisterHotKeys();
+
+            // Release the mouse hook
+            MouseHook.ReleaseHook();
         }
 
         private void UnregisterHotKeys()
@@ -168,5 +175,126 @@ namespace Win_Shortcuts
             ComponentDispatcher.ThreadFilterMessage -= ComponentDispatcher_ThreadFilterMessage;
             Logger.Log("Application exiting.", Logger.Level.INFO);
         }
+    }
+
+    class MouseHook
+    {
+        private const int WH_MOUSE_LL = 14;
+        private const int WM_MOUSEMOVE = 0x0200;
+        private const int WM_RBUTTONDOWN = 0x0204;
+        private const int WM_RBUTTONUP = 0x0205;
+        private static LowLevelMouseProc _proc = HookCallback;
+        private static IntPtr _hookID = IntPtr.Zero;
+        private static bool _isDragging = false;
+        private static POINT _startPoint;
+
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        public static void SetHook()
+        {
+            _hookID = SetWindowsHookEx(WH_MOUSE_LL, _proc, GetModuleHandle(Process.GetCurrentProcess().MainModule.ModuleName), 0);
+        }
+
+        public static void ReleaseHook()
+        {
+            UnhookWindowsHookEx(_hookID);
+        }
+
+        private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+        private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0)
+            {
+                switch ((int)wParam)
+                {
+                    case WM_RBUTTONDOWN:
+                        _isDragging = true;
+                        _startPoint = (POINT)Marshal.PtrToStructure(lParam, typeof(POINT));
+                        break;
+                    case WM_MOUSEMOVE:
+                        if (_isDragging)
+                        {
+                            POINT currentPoint = (POINT)Marshal.PtrToStructure(lParam, typeof(POINT));
+                            MoveWindowWithCursor(_startPoint, currentPoint);
+                            _startPoint = currentPoint; // Update start point for smooth movement
+                        }
+                        break;
+                    case WM_RBUTTONUP:
+                        _isDragging = false;
+                        break;
+                }
+            }
+            return CallNextHookEx(_hookID, nCode, wParam, lParam);
+        }
+
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetCursorPos(out POINT lpPoint);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr WindowFromPoint(POINT Point);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct POINT
+        {
+            public int x;
+            public int y;
+        }
+
+        // Add remaining P/Invoke signatures for moving the window
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        const uint SWP_NOZORDER = 0x0004;
+        const uint SWP_NOSIZE = 0x0001;
+        const uint SWP_SHOWWINDOW = 0x0040;
+
+        private static void MoveWindowWithCursor(POINT startPoint, POINT currentPoint)
+        {
+            // Calculate deltas
+            int deltaX = currentPoint.x - startPoint.x;
+            int deltaY = currentPoint.y - startPoint.y;
+
+            // Get the window handle from the cursor position
+            if (GetCursorPos(out POINT cursorPos))
+            {
+                IntPtr windowHandle = WindowFromPoint(cursorPos);
+                if (windowHandle != IntPtr.Zero)
+                {
+                    // Get current window position
+                    GetWindowRect(windowHandle, out RECT windowRect);
+                    int newX = windowRect.Left + deltaX;
+                    int newY = windowRect.Top + deltaY;
+
+                    // Move the window
+                    SetWindowPos(windowHandle, IntPtr.Zero, newX, newY, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_SHOWWINDOW);
+                }
+            }
+        }
+
     }
 }
